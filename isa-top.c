@@ -158,11 +158,16 @@ pcap_t* initialize_pcap(config_t *config) {
 
 
 int compare_keys(connection_key_t *a, connection_key_t *b) {
-    return (strcmp(a->src_ip, b->src_ip) == 0 &&
-            strcmp(a->src_port, b->src_port) == 0 &&
+    return (strcmp(a->proto, b->proto) == 0 &&          // protocol
+          ((strcmp(a->src_ip, b->src_ip) == 0 &&        // Tx
             strcmp(a->dst_ip, b->dst_ip) == 0 &&
-            strcmp(a->dst_port, b->dst_port) == 0 &&
-            strcmp(a->proto, b->proto) == 0);
+            strcmp(a->src_port, b->src_port) == 0 &&
+            strcmp(a->dst_port, b->dst_port) == 0) 
+            ||
+           (strcmp(a->src_ip, b->dst_ip) == 0 &&        // Rx
+            strcmp(a->dst_ip, b->src_ip) == 0 &&
+            strcmp(a->src_port, b->dst_port) == 0 &&
+            strcmp(a->dst_port, b->src_port) == 0)))
 }
 
 connection_stats_t* get_connection(connection_key_t *key) {
