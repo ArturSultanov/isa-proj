@@ -2,7 +2,7 @@
 CC = gcc
 
 # Compiler flags
-CFLAGS = -Wall -Wextra -pedantic -O2
+CFLAGS = -Wall -pedantic -Wextra -Werror -g
 
 # Libraries
 LIBS = -lpcap -lncurses
@@ -31,6 +31,10 @@ $(TARGET): $(OBJS)
 clean:
 	rm -f $(OBJS) $(TARGET)
 
-# Run the program with default arguments (customize this)
+# Run the program with default arguments
 run: $(TARGET)
-	sudo ./$(TARGET) -i eth0 -s b -t 1  # Modify interface or options as needed
+	sudo ./$(TARGET) -i lo -s b -t 1  # localhost as default
+
+# Run valgrind command to check the memory leaks
+valgrind: $(TARGET)
+	sudo valgrind --leak-check=full ./$(TARGET) -i lo
