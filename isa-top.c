@@ -7,6 +7,14 @@
 #include <getopt.h>
 #include <stdint.h>
 
+
+// Manually define Ethernet types
+#define ETHERTYPE_IP 0x0800   // IPv4 Ethernet type
+#define ETHERTYPE_IPV6 0x86DD // IPv6 Ethernet type
+
+// This is a global pointer that points to the head of a linked list containing all the current connections.
+connection_stats_t *connections = NULL;
+
 //// STRUCTURES /////
 
 // Sorting types: SORT_BYTES or SORT_PACKETS
@@ -15,19 +23,12 @@ typedef enum {
     SORT_PACKETS
 } sort_type_t;
 
-// Sorting types: SORT_BYTES or SORT_PACKETS
-typedef enum {
-    DISABLED,
-    ENABLED
-} promisc_mode_t;
-
 
 // Program configuration
 typedef struct {
     char *interface;
     sort_type_t sort_type;
     int interval; // in seconds
-    promisc_mode_t promisc_mode;
 } config_t;
 
 // Key that defines unique connection
@@ -49,12 +50,8 @@ typedef struct connection_stats {
     struct connection_stats *next;
 } connection_stats_t;
 
-// This is a global pointer that points to the head of a linked list containing all the current connections.
-connection_stats_t *connections = NULL;
-
 
 ///// FUNCTIONS' DECLARATIONS /////
-
 
 /**
  * Parce the programm arguments
@@ -84,7 +81,7 @@ pcap_t* initialize_pcap(config_t *config);
 // CLI Arguments parsing
 
 void print_usage(char *prog) {
-    printf("Usage: %s -i <interface> [-s b|p] [-t <interval>] [-p <promisc mode>]\n", prog);
+    printf("Usage: %s -i <interface> [-s b|p] [-t <interval>]\n", prog);
     exit(EXIT_FAILURE);
 }
 
@@ -93,7 +90,6 @@ config_t parse_args(int argc, char **argv) {
     config.interface = NULL;
     config.sort_type = SORT_BYTES;  // default sort by bytes
     config.interval = 1;            // default 1 second
-    config.promisc_mode = DISABLED; // default disabled - 0
 
     int opt;
     while ((opt = getopt(argc, argv, "i:s:t:p")) != -1) {
@@ -118,16 +114,6 @@ config_t parse_args(int argc, char **argv) {
                     print_usage(argv[0]);
                 }
                 break;
-            case 'p':
-                if (strcmp(optarg, "e") == 0)
-                    config.promisc_mode = ENABLED;
-                else if (strcmp(optarg, "d") == 0)
-                    config.promisc_mode = DISABLED;
-                else {
-                    fprintf(stderr, "Invalid promisc mode: %s\n", optarg);
-                    print_usage(argv[0]);
-                }
-                break;
             default:
                 print_usage(argv[0]);
         }
@@ -146,7 +132,7 @@ pcap_t* initialize_pcap(config_t *config) {
     char errbuf[PCAP_ERRBUF_SIZE];
     pcap_t *session;
 
-    session = pcap_open_live(config->interface, BUFSIZ, config->promisc_mode, 1000, errbuf);
+    session = pcap_open_live(config->interface, BUFSIZ, 1, 1000, errbuf);
 
     if (session == NULL) {
         fprintf(stderr, "Couldn't open device %s: %s\n", config->interface, errbuf);
@@ -167,7 +153,7 @@ int compare_keys(connection_key_t *a, connection_key_t *b) {
            (strcmp(a->src_ip, b->dst_ip) == 0 &&        // Rx
             strcmp(a->dst_ip, b->src_ip) == 0 &&
             strcmp(a->src_port, b->dst_port) == 0 &&
-            strcmp(a->dst_port, b->src_port) == 0)))
+            strcmp(a->dst_port, b->src_port) == 0)));
 }
 
 connection_stats_t* get_connection(connection_key_t *key) {
@@ -201,6 +187,109 @@ void clear_connections() {
     }
 }
 
+#include <stdint.h>
+
+struct ether_header {
+    uint8_t ether_dhost[6];  // Destination MAC address
+    uint8_t ether_shost[6];  // Source MAC address
+    uint16_t ether_type;     // Protocol type (e.g., IPv4 or IPv6)
+};
+
+struct ipv4_header {
+    uint8_t version_ihl;       // 4 bits version, 4 bits IHL (header length)
+    uint8_t type_of_service;   // Type of service
+    uint16_t total_length;     // Total length of the IP packet (for byte counting)
+    uint16_t identification;   // Identification
+    uint16_t flags_offset;     // Flags (3 bits) and fragment offset (13 bits)
+    uint8_t ttl;               // Time to live
+    uint8_t protocol;          // Protocol (TCP, UDP, ICMP, etc.)
+    uint16_t checksum;         // Header checksum
+    uint32_t src_ip;           // Source IP address
+    uint32_t dest_ip;          // Destination IP address
+};
+
+struct tcp_header {
+    uint16_t src_port;         // Source port
+    uint16_t dest_port;        // Destination port
+    uint32_t sequence;         // Sequence number
+    uint32_t acknowledgment;   // Acknowledgment number
+    uint8_t data_offset;       // Data offset (4 bits)
+    uint8_t flags;             // Control flags (e.g., SYN, ACK, FIN, etc.)
+    uint16_t window_size;      // Window size
+    uint16_t checksum;         // Checksum
+    uint16_t urgent_pointer;   // Urgent pointer (if URG flag is set)
+};
+
+struct udp_header {
+    uint16_t src_port;         // Source port
+    uint16_t dest_port;        // Destination port
+    uint16_t length;           // Length of the UDP packet
+    uint16_t checksum;         // Checksum
+};
+
+struct icmp_header {
+    uint8_t type;              // ICMP message type
+    uint8_t code;              // ICMP message code
+    uint16_t checksum;         // Checksum
+    uint16_t identifier;       // Identifier (for certain types of ICMP)
+    uint16_t sequence_number;  // Sequence number (for certain types of ICMP)
+};
+
+struct ipv6_header {
+    uint32_t version_class_flow;  // 4 bits version, 8 bits traffic class, 20 bits flow label
+    uint16_t payload_length;      // Length of the payload
+    uint8_t next_header;          // Next header (TCP, UDP, ICMPv6, etc.)
+    uint8_t hop_limit;            // Hop limit (like TTL in IPv4)
+    uint8_t src_ip[16];           // Source IP address (128 bits)
+    uint8_t dest_ip[16];          // Destination IP address (128 bits)
+};
+
+#include <arpa/inet.h>
+#include <stdio.h>
+#include <string.h>
+
+void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const unsigned char *packet) {
+    struct ether_header *eth = (struct ether_header*) packet;
+    uint16_t eth_type = ntohs(eth->ether_type);
+
+    if (eth_type == ETHERTYPE_IP) { // IPv4
+        struct ipv4_header *ip_hdr = (struct ipv4_header*)(packet + sizeof(struct ether_header));
+        char src_ip[INET_ADDRSTRLEN];
+        char dst_ip[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &ip_hdr->src_ip, src_ip, INET_ADDRSTRLEN);
+        inet_ntop(AF_INET, &ip_hdr->dest_ip, dst_ip, INET_ADDRSTRLEN);
+
+        uint16_t src_port = 0, dst_port = 0;
+        if (ip_hdr->protocol == IPPROTO_TCP) {
+            struct tcp_header *tcp = (struct tcp_header*)(packet + sizeof(struct ether_header) + (ip_hdr->version_ihl & 0xF) * 4);
+            src_port = ntohs(tcp->src_port);
+            dst_port = ntohs(tcp->dest_port);
+        } else if (ip_hdr->protocol == IPPROTO_UDP) {
+            struct udp_header *udp = (struct udp_header*)(packet + sizeof(struct ether_header) + (ip_hdr->version_ihl & 0xF) * 4);
+            src_port = ntohs(udp->src_port);
+            dst_port = ntohs(udp->dest_port);
+        }
+        // Process the connection (src_ip, dst_ip, src_port, dst_port)
+    } else if (eth_type == ETHERTYPE_IPV6) { // IPv6
+        struct ipv6_header *ip6_hdr = (struct ipv6_header*)(packet + sizeof(struct ether_header));
+        char src_ip[INET6_ADDRSTRLEN];
+        char dst_ip[INET6_ADDRSTRLEN];
+        inet_ntop(AF_INET6, ip6_hdr->src_ip, src_ip, INET6_ADDRSTRLEN);
+        inet_ntop(AF_INET6, ip6_hdr->dest_ip, dst_ip, INET6_ADDRSTRLEN);
+
+        uint16_t src_port = 0, dst_port = 0;
+        if (ip6_hdr->next_header == IPPROTO_TCP) {
+            struct tcp_header *tcp = (struct tcp_header*)(packet + sizeof(struct ether_header) + sizeof(struct ipv6_header));
+            src_port = ntohs(tcp->src_port);
+            dst_port = ntohs(tcp->dest_port);
+        } else if (ip6_hdr->next_header == IPPROTO_UDP) {
+            struct udp_header *udp = (struct udp_header*)(packet + sizeof(struct ether_header) + sizeof(struct ipv6_header));
+            src_port = ntohs(udp->src_port);
+            dst_port = ntohs(udp->dest_port);
+        }
+        // TODO: Process the connection (src_ip, dst_ip, src_port, dst_port) RX/TXS
+    }
+}
 
 
 
