@@ -293,11 +293,16 @@ void packet_handler(const struct pcap_pkthdr *header, const unsigned char *packe
 
         connection_stats_t *conn = get_connection(&key);
         if (conn) {
-            conn->tx_bytes += header->len;  // Increment Tx bytes by the packet length
-            conn->tx_packets += 1;
+            if (strcmp(conn->key.src_ip, key.src_ip) == 0) {
+                // This is for Tx: source is sending data
+                conn->tx_bytes += header->len;  // Increment Tx bytes by the packet length
+                conn->tx_packets += 1;
+            } else if (strcmp(conn->key.src_ip, key.dst_ip) == 0) {
+                // This is for Rx: destination is receiving data
+                conn->rx_bytes += header->len;  // Increment Rx bytes by the packet length
+                conn->rx_packets += 1;
+            }
         }
-
-        // TODO: Rx
 
     } else if (eth_type == 0x86DD) {  // IPv6
         // IPv6 header starts at byte 14
@@ -335,10 +340,16 @@ void packet_handler(const struct pcap_pkthdr *header, const unsigned char *packe
 
         connection_stats_t *conn = get_connection(&key);
         if (conn) {
-            conn->tx_bytes += header->len;  // Increment Tx bytes by the packet length
-            conn->tx_packets += 1;
+            if (strcmp(conn->key.src_ip, key.src_ip) == 0) {
+                // This is for Tx: source is sending data
+                conn->tx_bytes += header->len;  // Increment Tx bytes by the packet length
+                conn->tx_packets += 1;
+            } else if (strcmp(conn->key.src_ip, key.dst_ip) == 0) {
+                // This is for Rx: destination is sending data
+                conn->rx_bytes += header->len;  // Increment Rx bytes by the packet length
+                conn->rx_packets += 1;
+            }
         }
-        // TODO: Rx
     }
 }
 
