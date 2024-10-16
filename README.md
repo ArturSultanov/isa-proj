@@ -37,3 +37,12 @@ The `parse_args` function is responsible for parsing the arguments provided by t
 -s b|p: Optional flag to specify the sorting mode. If set to b, the connections will be sorted by bytes per second; if p, they will be sorted by packets per second. The default is to sort by bytes.
 -t interval: Optional flag to set how often (in seconds) the statistics should be updated. By default, this is 1 second.
 If the required -i flag (interface) is missing, the program will show a usage message and exit.
+
+
+
+Packet Capturing and Handling: Using libpcap to capture packets and process them.
+Data Structures: Managing connections and their statistics.
+Display Logic: Using ncurses to display the top 10 connections in real-time.
+Sorting Mechanism: Sorting connections based on bytes or packets.
+Signal Handling: Gracefully handling program termination (e.g., Ctrl+C).
+Memory Management: Ensuring all dynamically allocated memory is properly freed.

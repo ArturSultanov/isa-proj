@@ -33,8 +33,8 @@ clean:
 
 # Run the program with default arguments
 run: $(TARGET)
-	sudo ./$(TARGET) -i lo -s b -t 1  # localhost as default
+	sudo ./$(TARGET) -i any -s b -t 1
 
 # Run valgrind command to check the memory leaks
 valgrind: $(TARGET)
-	sudo valgrind --leak-check=full ./$(TARGET) -i lo
+	sudo valgrind --leak-check=full ./$(TARGET) -i any
