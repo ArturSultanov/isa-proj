@@ -9,6 +9,7 @@
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <string.h>
+#include <ncurses.h>
 
 
 // Manually define Ethernet types
@@ -351,6 +352,58 @@ void packet_handler(const struct pcap_pkthdr *header, const unsigned char *packe
             }
         }
     }
+}
+
+void initialize_ncurses() {
+    initscr();              // Start curses mode
+    cbreak();               // Disable line buffering
+    noecho();               // Don't echo() while we do getch
+    curs_set(FALSE);        // Hide the cursor
+    nodelay(stdscr, TRUE);  // Non-blocking input
+}
+
+void cleanup_ncurses() {
+    endwin();
+}
+
+typedef struct {
+    double value;
+    char suffix[4];
+} human_readable_t;
+
+human_readable_t format_bytes(uint64_t bytes) {
+    human_readable_t hr;
+    double b = bytes;
+    if (b >= 1e9) {
+        hr.value = b / 1e9;
+        strcpy(hr.suffix, "G");
+    } else if (b >= 1e6) {
+        hr.value = b / 1e6;
+        strcpy(hr.suffix, "M");
+    } else if (b >= 1e3) {
+        hr.value = b / 1e3;
+        strcpy(hr.suffix, "K");
+    } else {
+        hr.value = b;
+        strcpy(hr.suffix, " ");
+    }
+    return hr;
+}
+
+human_readable_t format_packets(uint64_t packets) {
+    human_readable_t hr;
+    double p = packets;
+    if (p >= 1e6) {
+        hr.value = p / 1e6;
+        strcpy(hr.suffix, "M");
+    } else if (p >= 1e3) {
+        hr.value = p / 1e3;
+        strcpy(hr.suffix, "K");
+    } else {
+        hr.value = p;
+        strcpy(hr.suffix, " ");
+    }
+    return hr;
 }
 
 
