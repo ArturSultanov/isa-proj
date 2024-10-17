@@ -2,16 +2,16 @@
 CC = gcc
 
 # Compiler flags
-CFLAGS = -Wall -pedantic -Wextra -Werror -g
+CFLAGS = -Wall -Wextra -Wpedantic -g -Wmissing-prototypes -Wstrict-prototypes
 
 # Libraries
-LIBS = -lpcap -lncurses
+LDFLAGS = -lpcap -lncurses
 
 # Target executable
 TARGET = isa-top
 
 # Source files
-SRCS = isa-top.c
+SRCS = main.c config.c connection.c display.c packet_logic.c utils.c
 
 # Object files
 OBJS = $(SRCS:.c=.o)
@@ -21,7 +21,7 @@ all: $(TARGET)
 
 # Link the target executable
 $(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $(TARGET) $(OBJS) $(LIBS)
+	$(CC) $(CFLAGS) -o $(TARGET) $(OBJS) $(LDFLAGS)
 
 # Compile object files
 %.o: %.c
@@ -38,4 +38,3 @@ run: $(TARGET)
 # Run valgrind command to check the memory leaks
 valgrind: $(TARGET)
 	sudo valgrind --leak-check=full --show-leak-kinds=all ./$(TARGET) -i $(IFACE)
-
