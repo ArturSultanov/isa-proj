@@ -15,7 +15,6 @@
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
 #include <netinet/ip_icmp.h>
-#include <pcap.h>
 #include <net/ethernet.h>  // For Ethernet header (struct ether_header)
 #include <netinet/in.h>    // htons, ntohs for byte order conversions
 
@@ -68,7 +67,7 @@ typedef struct {
 // Global pointer to the head of the linked list of connections.
 connection_stats_t *connections = NULL;
 
-// Global variable of the programm config
+// Global variable of the program config
 config_t config;
 
 // Global flag to indicate when to stop the program
@@ -93,15 +92,36 @@ connection_stats_t* get_connection(connection_key_t *key, int* direction);
 // Function to clear connection statistics
 void clear_connections();
 
+// Function to free all connections
+void free_connections_func();
+
+// Function to parse IPv6 headers
 int parse_ipv6_headers(const unsigned char *packet, size_t packet_len, struct ip6_hdr **ip6_hdr, uint8_t *transport_proto, const unsigned char **transport_header);
 
+// Packet handler callback
 void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const unsigned char *packet);
 
+// Function to format bytes into human-readable form
 human_readable_t format_bytes(uint64_t bytes);
 
-human_readable_t format_packets(uint64_t bytes);
+// Function to format packets into human-readable form
+human_readable_t format_packets(uint64_t packets);
 
+// Signal handler for SIGINT
 void handle_sigint(int sig);
+
+// Function to initialize pcap
+pcap_t* initialize_pcap();
+
+// Function to initialize ncurses
+int initialize_ncurses();
+
+// Function to cleanup ncurses
+void cleanup_ncurses();
+
+// Function to display statistics
+void display_stats();
+
 // ========================
 // Functions' definitions
 // ========================
@@ -127,24 +147,24 @@ int parse_args(int argc, char **argv) {
                     config.sort_type = SORT_PACKETS;
                 else {
                     fprintf(stderr, "Invalid sort type: %s\n", optarg);
-                    print_usage(argv[0]);
+                    return -1;
                 }
                 break;
             case 't':
                 config.interval = atoi(optarg);
                 if (config.interval <= 0) {
                     fprintf(stderr, "Invalid interval: %s\n", optarg);
-                    print_usage(argv[0]);
+                    return -1;
                 }
                 break;
             default:
-                print_usage(argv[0]);
+                return -1;
         }
     }
 
     if (config.interface == NULL) {
         fprintf(stderr, "Interface is required.\n");
-        print_usage(argv[0]);
+        return -1;
     }
 
     return 0;
@@ -156,10 +176,36 @@ void print_usage(char *prog) {
     printf("  -i <interface> : Network interface to capture packets from (e.g., eth0)\n");
     printf("  -s b|p         : Sort by bytes (b) or packets (p). Default is bytes.\n");
     printf("  -t <interval>  : Update interval in seconds. Default is 1 second.\n");
-    exit(EXIT_FAILURE);
 }
 
 // ===== Connections management =====
+
+// Function to compare two connection keys.
+// Returns 1 if identical (Tx), -1 if reverse (Rx), 0 if different
+int compare_keys(connection_key_t *a, connection_key_t *b) {
+    // Compare protocol first (they must match)
+    if (strcmp(a->protocol, b->protocol) != 0) {
+        return 0;  // Different
+    }
+
+    // Check if the connection is in the Tx direction
+    if (strcmp(a->src_ip, b->src_ip) == 0 && 
+        strcmp(a->dst_ip, b->dst_ip) == 0 &&
+        strcmp(a->src_port, b->src_port) == 0 &&
+        strcmp(a->dst_port, b->dst_port) == 0) {
+        return 1;  // Tx direction (matching source and destination)
+    }
+
+    // Check if the connection is in the Rx direction (reverse match)
+    if (strcmp(a->src_ip, b->dst_ip) == 0 && 
+        strcmp(a->dst_ip, b->src_ip) == 0 &&
+        strcmp(a->src_port, b->dst_port) == 0 &&
+        strcmp(a->dst_port, b->src_port) == 0) {
+        return -1;  // Rx direction (reverse match)
+    }
+
+    return 0;  // Different connections
+}
 
 // Function to find or create a connection
 connection_stats_t* get_connection(connection_key_t *key, int *direction) {
@@ -182,7 +228,7 @@ connection_stats_t* get_connection(connection_key_t *key, int *direction) {
     connection_stats_t *new_conn = malloc(sizeof(connection_stats_t));
     if (!new_conn) {
         perror("malloc");
-        exit(EXIT_FAILURE);
+        return NULL;
     }
 
     // Initialize the new connection
@@ -195,35 +241,7 @@ connection_stats_t* get_connection(connection_key_t *key, int *direction) {
     return new_conn;  // Return the newly created connection
 }
 
-
-// Function to compare two connection keys.
-// Returns 1 if identical (Tx), -1 if reverse (Rx), 0 if different
-int compare_keys(connection_key_t *a, connection_key_t *b) {
-    // Compare protocol first (they must match)
-    if (strcmp(a->protocol, b->protocol) != 0) {
-        return 0;  // Different
-    }
-    
-    // Check if the connection is in the Tx direction
-    if (strcmp(a->src_ip, b->src_ip) == 0 && 
-        strcmp(a->dst_ip, b->dst_ip) == 0 &&
-        strcmp(a->src_port, b->src_port) == 0 &&
-        strcmp(a->dst_port, b->dst_port) == 0) {
-        return 1;  // Tx direction (matching source and destination)
-    }
-
-    // Check if the connection is in the Rx direction (reverse match)
-    if (strcmp(a->src_ip, b->dst_ip) == 0 && 
-        strcmp(a->dst_ip, b->src_ip) == 0 &&
-        strcmp(a->src_port, b->dst_port) == 0 &&
-        strcmp(a->dst_port, b->src_port) == 0) {
-        return -1;  // Rx direction (reverse match)
-    }
-
-    return 0;  // Different connections
-}
-
-
+// Comparator for qsort
 int connection_sort(const void *a, const void *b) {
     // The argument 'arg' is cast to the appropriate type, in this case sort_type_t
     sort_type_t sort_type = config.sort_type;
@@ -267,8 +285,20 @@ void clear_connections() {
     }
 }
 
+// Function to free all connections
+void free_connections_func() {
+    connection_stats_t *current = connections;
+    while (current != NULL) {
+        connection_stats_t *tmp = current;
+        current = current->next;
+        free(tmp);
+    }
+    connections = NULL;
+}
+
 // ===== Packets processing =====
 
+// Function to parse IPv6 headers
 int parse_ipv6_headers(const unsigned char *packet, size_t packet_len, struct ip6_hdr **ip6_hdr, uint8_t *transport_proto, const unsigned char **transport_header) {
     if (packet_len < sizeof(struct ip6_hdr)) {
         return -1;  // Packet too short
@@ -310,31 +340,47 @@ int parse_ipv6_headers(const unsigned char *packet, size_t packet_len, struct ip
     }
 }
 
+// Packet handler callback
 void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const unsigned char *packet) {
     (void) args;
-    struct ether_header *eth = (struct ether_header*) packet;  // Catch the raw packer
+    struct ether_header *eth = (struct ether_header*) packet;  // Catch the raw packet
     uint16_t eth_type = ntohs(eth->ether_type);
 
     connection_key_t key;  // Create a new connection key
     memset(&key, 0, sizeof(connection_key_t));  // Populate key with zeros
 
     if (eth_type == ETHERTYPE_IP) {  // IPv4
+        if (header->len < sizeof(struct ether_header) + sizeof(struct ip)) {
+            // Packet too short for IPv4 header
+            return;
+        }
+
         struct ip *ip4_hdr = (struct ip*)(packet + sizeof(struct ether_header));
 
-        // Processing ipv4
-        char src_ip[INET_ADDRSTRLEN]; inet_ntop(AF_INET, &(ip4_hdr->ip_src), src_ip, INET_ADDRSTRLEN); 
-        char dst_ip[INET_ADDRSTRLEN]; inet_ntop(AF_INET, &(ip4_hdr->ip_dst), dst_ip, INET_ADDRSTRLEN);
+        // Processing IPv4
+        char src_ip[INET_ADDRSTRLEN];
+        char dst_ip[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &(ip4_hdr->ip_src), src_ip, INET_ADDRSTRLEN); 
+        inet_ntop(AF_INET, &(ip4_hdr->ip_dst), dst_ip, INET_ADDRSTRLEN);
 
         // Processing ports
-        uint16_t src_port, dst_port = 0;
+        uint16_t src_port = 0, dst_port = 0;
         char protocol[7] = "other";
 
         if (ip4_hdr->ip_p == IPPROTO_TCP) {
+            if (header->len < sizeof(struct ether_header) + ip4_hdr->ip_hl * 4 + sizeof(struct tcphdr)) {
+                // Packet too short for TCP header
+                return;
+            }
             struct tcphdr *tcp = (struct tcphdr*)(packet + sizeof(struct ether_header) + ip4_hdr->ip_hl * 4);
             src_port = ntohs(tcp->th_sport);
             dst_port = ntohs(tcp->th_dport);
             strcpy(protocol, "tcp");
         } else if (ip4_hdr->ip_p == IPPROTO_UDP) {
+            if (header->len < sizeof(struct ether_header) + ip4_hdr->ip_hl * 4 + sizeof(struct udphdr)) {
+                // Packet too short for UDP header
+                return;
+            }
             struct udphdr *udp = (struct udphdr*)(packet + sizeof(struct ether_header) + ip4_hdr->ip_hl * 4);
             src_port = ntohs(udp->uh_sport);
             dst_port = ntohs(udp->uh_dport);
@@ -360,6 +406,12 @@ void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const
             return;
         }
 
+        // Ensure there's enough data for the IPv6 header
+        if (header->len < sizeof(struct ether_header) + sizeof(struct ip6_hdr)) {
+            // Packet too short for IPv6 header
+            return;
+        }
+
         char src_ip[INET6_ADDRSTRLEN];
         char dst_ip[INET6_ADDRSTRLEN];
         inet_ntop(AF_INET6, &(ip6_hdr->ip6_src), src_ip, INET6_ADDRSTRLEN);
@@ -369,11 +421,19 @@ void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const
         char protocol[7] = "other";
 
         if (transport_proto == IPPROTO_TCP) {
+            if (header->len < (transport_header - packet) + sizeof(struct tcphdr)) {
+                // Packet too short for TCP header
+                return;
+            }
             struct tcphdr *tcp = (struct tcphdr*)transport_header;
             src_port = ntohs(tcp->th_sport);
             dst_port = ntohs(tcp->th_dport);
             strcpy(protocol, "tcp");
         } else if (transport_proto == IPPROTO_UDP) {
+            if (header->len < (transport_header - packet) + sizeof(struct udphdr)) {
+                // Packet too short for UDP header
+                return;
+            }
             struct udphdr *udp = (struct udphdr*)transport_header;
             src_port = ntohs(udp->uh_sport);
             dst_port = ntohs(udp->uh_dport);
@@ -397,6 +457,10 @@ void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const
     // Retrieve or create the connection statistics
     int direction;
     connection_stats_t *conn = get_connection(&key, &direction);
+    if (conn == NULL) {
+        // Memory allocation failed
+        return;
+    }
 
     // Update statistics based on direction
     if (direction == 1) {
@@ -407,7 +471,7 @@ void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const
         // Rx direction (incoming)
         conn->rx_bytes += header->len;
         conn->rx_packets += 1;
-}
+    }
 }
 
 // ===== Display logic =====
@@ -433,7 +497,7 @@ void display_stats() {
     connection_stats_t **array = malloc(count * sizeof(connection_stats_t*));
     if (!array) {
         perror("malloc");
-        exit(EXIT_FAILURE);
+        return;
     }
 
     // Populate array
@@ -497,24 +561,15 @@ void display_stats() {
     free(array);
 }
 
-// Function to free all connections
-void free_connections_func() {
-    connection_stats_t *current = connections;
-    while (current != NULL) {
-        connection_stats_t *tmp = current;
-        current = current->next;
-        free(tmp);
-    }
-    connections = NULL;
-}
-
 // ===== Helper functions =====
 
+// Function to handle SIGINT (Ctrl+C)
 void handle_sigint(int sig) {
     (void) sig;
     stop = 1;
 }
 
+// Function to initialize pcap
 pcap_t* initialize_pcap() {
     char errbuf[PCAP_ERRBUF_SIZE];
     pcap_t *session;
@@ -523,18 +578,20 @@ pcap_t* initialize_pcap() {
 
     if (session == NULL) {
         fprintf(stderr, "Couldn't open device %s: %s\n", config.interface, errbuf);
-        exit(EXIT_FAILURE);
+        return NULL;
     }
 
     return session;
 }
 
-void initialize_ncurses() {
+// Function to initialize ncurses
+int initialize_ncurses() {
     initscr();              // Start curses mode
     cbreak();               // Disable line buffering
     noecho();               // Don't echo() while we do getch
     curs_set(FALSE);        // Hide the cursor
     nodelay(stdscr, TRUE);  // Non-blocking input
+    return 0;
 }
 
 // Cleanup ncurses
@@ -542,6 +599,7 @@ void cleanup_ncurses() {
     endwin();               // End curses mode
 }
 
+// Function to format bytes into human-readable form
 human_readable_t format_bytes(uint64_t bytes) {
     human_readable_t hr;
     double b = (double)bytes;
@@ -561,6 +619,7 @@ human_readable_t format_bytes(uint64_t bytes) {
     return hr;
 }
 
+// Function to format packets into human-readable form
 human_readable_t format_packets(uint64_t packets) {
     human_readable_t hr;
     double p = (double)packets;
@@ -577,30 +636,42 @@ human_readable_t format_packets(uint64_t packets) {
     return hr;
 }
 
+// ========================
+// Main Function
+// ========================
+
 int main(int argc, char **argv) {
     // Parse command-line arguments
-    if(parse_args(argc, argv)){
-        printf("Error\n");
-        return 1;
+    if(parse_args(argc, argv) != 0){
+        print_usage(argv[0]);
+        return EXIT_FAILURE;
     }
 
-    // get_local_ip_addresses(config->interface);
-
     // Initialize ncurses
-    initialize_ncurses();
+    if (initialize_ncurses() != 0) {
+        return EXIT_FAILURE;
+    }
 
     // Handle SIGINT for graceful exit
-    signal(SIGINT, handle_sigint);
+    if (signal(SIGINT, handle_sigint) == SIG_ERR) {
+        fprintf(stderr, "Cannot handle SIGINT!\n");
+        cleanup_ncurses();
+        return EXIT_FAILURE;
+    }
 
     // Initialize pcap
     pcap_t *handle = initialize_pcap();
+    if (handle == NULL) {
+        cleanup_ncurses();
+        return EXIT_FAILURE;
+    }
 
     // Set pcap to non-blocking mode
     if (pcap_setnonblock(handle, 1, NULL) == -1) {
         fprintf(stderr, "Failed to set pcap to non-blocking mode: %s\n", pcap_geterr(handle));
-        cleanup_ncurses();
         pcap_close(handle);
-        exit(EXIT_FAILURE);
+        cleanup_ncurses();
+        return EXIT_FAILURE;
     }
 
     // Start time tracking
@@ -632,5 +703,5 @@ int main(int argc, char **argv) {
     cleanup_ncurses();
     free_connections_func();
 
-    return 0;
+    return EXIT_SUCCESS;
 }
