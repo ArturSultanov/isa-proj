@@ -88,7 +88,7 @@ void print_usage(char *prog);
 int compare_keys(connection_key_t *a, connection_key_t *b);
 
 // Function to find or create a connection
-connection_stats_t* get_connection(connection_key_t *key);
+connection_stats_t* get_connection(connection_key_t *key, int* direction);
 
 // Function to clear connection statistics
 void clear_connections();
@@ -159,50 +159,70 @@ void print_usage(char *prog) {
     exit(EXIT_FAILURE);
 }
 
-
 // ===== Connections management =====
 
-
 // Function to find or create a connection
-connection_stats_t* get_connection(connection_key_t *key) {
+connection_stats_t* get_connection(connection_key_t *key, int *direction) {
     connection_stats_t *current = connections;
+
+    // Loop through existing connections to check for a match
     while (current != NULL) {
-        if (compare_keys(&current->key, key))
-            return current;
+        int dir = compare_keys(&current->key, key);
+        if (dir != 0) {  // If a match is found (Tx or Rx)
+            *direction = dir;  // Set the direction (1 for Tx, -1 for Rx)
+            return current;    // Return the found connection
+        }
         current = current->next;
     }
 
-    // Create new connection
+    // No match found, create a new connection
+    *direction = 1; // Default to Tx if it's a new connection
+
+    // Allocate memory for the new connection
     connection_stats_t *new_conn = malloc(sizeof(connection_stats_t));
     if (!new_conn) {
         perror("malloc");
         exit(EXIT_FAILURE);
     }
+
+    // Initialize the new connection
     memcpy(&new_conn->key, key, sizeof(connection_key_t));
     new_conn->rx_bytes = new_conn->tx_bytes = 0;
     new_conn->rx_packets = new_conn->tx_packets = 0;
-    new_conn->next = connections;
-    connections = new_conn;
-    return new_conn;
+    new_conn->next = connections;  // Insert the new connection at the head of the list
+    connections = new_conn;  // Update the head of the list
+
+    return new_conn;  // Return the newly created connection
 }
 
+
 // Function to compare two connection keys.
+// Returns 1 if identical (Tx), -1 if reverse (Rx), 0 if different
 int compare_keys(connection_key_t *a, connection_key_t *b) {
-    if (strcmp(a->protocol, b->protocol) != 0){
-        return 0;
-    } else if (strcmp(a->src_ip, b->src_ip) == 0 &&  // Tx   
+    // Compare protocol first (they must match)
+    if (strcmp(a->protocol, b->protocol) != 0) {
+        return 0;  // Different
+    }
+    
+    // Check if the connection is in the Tx direction
+    if (strcmp(a->src_ip, b->src_ip) == 0 && 
         strcmp(a->dst_ip, b->dst_ip) == 0 &&
         strcmp(a->src_port, b->src_port) == 0 &&
-        strcmp(a->dst_port, b->dst_port) == 0){
-            return 1;
-    } else if (strcmp(a->src_ip, b->dst_ip) == 0 &&  // Rx
-                strcmp(a->dst_ip, b->src_ip) == 0 &&
-                strcmp(a->src_port, b->dst_port) == 0 &&
-                strcmp(a->dst_port, b->src_port) == 0){
-        return -1;
+        strcmp(a->dst_port, b->dst_port) == 0) {
+        return 1;  // Tx direction (matching source and destination)
     }
-    return 0;
+
+    // Check if the connection is in the Rx direction (reverse match)
+    if (strcmp(a->src_ip, b->dst_ip) == 0 && 
+        strcmp(a->dst_ip, b->src_ip) == 0 &&
+        strcmp(a->src_port, b->dst_port) == 0 &&
+        strcmp(a->dst_port, b->src_port) == 0) {
+        return -1;  // Rx direction (reverse match)
+    }
+
+    return 0;  // Different connections
 }
+
 
 int connection_sort(const void *a, const void *b) {
     // The argument 'arg' is cast to the appropriate type, in this case sort_type_t
@@ -375,10 +395,19 @@ void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const
     }
 
     // Retrieve or create the connection statistics
-    connection_stats_t *conn = get_connection(&key);
+    int direction;
+    connection_stats_t *conn = get_connection(&key, &direction);
 
-    conn->tx_bytes += header->len;
-    conn->tx_packets += 1;
+    // Update statistics based on direction
+    if (direction == 1) {
+        // Tx direction (outgoing)
+        conn->tx_bytes += header->len;
+        conn->tx_packets += 1;
+    } else if (direction == -1) {
+        // Rx direction (incoming)
+        conn->rx_bytes += header->len;
+        conn->rx_packets += 1;
+}
 }
 
 // ===== Display logic =====
