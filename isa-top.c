@@ -515,8 +515,14 @@ void display_stats() {
     clear();
 
     // Print headers
-    mvprintw(0, 0, "Src IP:port                     Dst IP:port                    Proto    Rx         Tx");
+    mvprintw(0, 0, "Src IP:port                     Dst IP:port                  Protocol    Rx         Tx");
     mvprintw(1, 0, "                                                                        b/s p/s     b/s p/s");
+
+    // Print headers with formatted width
+    mvprintw(0, 0, "%-30s %-30s %-7s %5s %15s",
+                "Src IP:port", "Dst IP:port", "Proto", "Rx", "Tx");
+    mvprintw(1, 0, "%-68s %7s%s %7s%s %7s%s %7s%s", "", "b/s", "", "p/s", "", "b/s", "", "p/s", "");
+
 
     // Determine how many to display (top 10)
     int display_count = count < 10 ? count : 10;
@@ -544,7 +550,7 @@ void display_stats() {
             snprintf(dst, sizeof(dst), "%s", conn->key.dst_ip);
 
         // Print the connection info
-        mvprintw(2 + i, 0, "%-30s %-30s %-7s %6.1lf%s %5.1lf%s %6.1lf%s %5.1lf%s",
+        mvprintw(2 + i, 0, "%-30s %-30s %-7s %6.1lf%s %6.1lf%s %6.1lf%s %6.1lf%s",
                  src,
                  dst,
                  conn->key.protocol,
