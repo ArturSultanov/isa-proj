@@ -33,8 +33,9 @@ clean:
 
 # Run the program with default arguments
 run: $(TARGET)
-	sudo ./$(TARGET) -i any -s b -t 1
+	sudo ./$(TARGET) -i $(IFACE) -s b -t 1
 
 # Run valgrind command to check the memory leaks
 valgrind: $(TARGET)
-	sudo valgrind --leak-check=full ./$(TARGET) -i any
+	sudo valgrind --leak-check=full --show-leak-kinds=all ./$(TARGET) -i $(IFACE)
+
