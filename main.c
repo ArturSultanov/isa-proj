@@ -8,6 +8,7 @@
 #include "display.h"
 #include "packet_logic.h"
 #include "utils.h"
+#include <ncurses.h>
 
 volatile sig_atomic_t stop = 0;
 
@@ -19,21 +20,23 @@ int main(int argc, char **argv) {
     }
 
     // Initialize ncurses
-    if (initialize_ncurses() != 0) {
-        return EXIT_FAILURE;
-    }
+    initscr();
+    cbreak();
+    noecho();
+    curs_set(FALSE);
+    nodelay(stdscr, TRUE);
 
     // Handle SIGINT for graceful exit
     if (signal(SIGINT, handle_sigint) == SIG_ERR) {
         fprintf(stderr, "Cannot handle SIGINT!\n");
-        cleanup_ncurses();
+        endwin();
         return EXIT_FAILURE;
     }
 
     // Initialize pcap
     pcap_t *handle = initialize_pcap();
     if (handle == NULL) {
-        cleanup_ncurses();
+        endwin();
         return EXIT_FAILURE;
     }
 
@@ -41,7 +44,7 @@ int main(int argc, char **argv) {
     if (pcap_setnonblock(handle, 1, NULL) == -1) {
         fprintf(stderr, "Failed to set pcap to non-blocking mode: %s\n", pcap_geterr(handle));
         pcap_close(handle);
-        cleanup_ncurses();
+        endwin();
         return EXIT_FAILURE;
     }
 
@@ -71,7 +74,7 @@ int main(int argc, char **argv) {
 
     // Cleanup
     pcap_close(handle);
-    cleanup_ncurses();
+    endwin();
     free_connections();
 
     return EXIT_SUCCESS;

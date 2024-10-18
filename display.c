@@ -96,16 +96,3 @@ void display_stats(void) {
     // Free the array
     free(array);
 }
-
-int initialize_ncurses(void) {
-    initscr();              // Start curses mode
-    cbreak();               // Disable line buffering
-    noecho();               // Don't echo() while we do getch
-    curs_set(FALSE);        // Hide the cursor
-    nodelay(stdscr, TRUE);  // Non-blocking input
-    return 0;
-}
-
-void cleanup_ncurses(void) {
-    endwin();               // End curses mode
-}
