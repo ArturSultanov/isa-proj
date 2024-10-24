@@ -1,0 +1,91 @@
+.TH ISA-TOP 1 "October 2024" "isa-top 1.0" "User Commands"
+.SH NAME
+isa-top \- display real-time network transfer rates between IP addresses
+.SH SYNOPSIS
+.B isa-top
+\-i \fIinterface\fR
+[\-s \fBb\fR|\fBp\fR] [\-t \fIinterval\fR]
+.SH DESCRIPTION
+.B isa-top
+is a command-line tool that captures and displays real-time transfer rates (bytes/second and packets/second) between communicating IP addresses on a specified network interface. It uses 
+.I libpcap 
+for packet capture and 
+.I ncurses 
+for terminal display, providing an updated view every second or at a user-defined interval.
+
+.SH OPTIONS
+.TP
+.B \-i \fIinterface\fR
+Specify the network interface to listen on. This option is required.
+.TP
+.B \-s \fBb\fR|\fBp\fR
+Sort the displayed connections by either bytes per second (\fBb\fR) or packets per second (\fBp\fR). Default is sorting by bytes.
+.TP
+.B \-t \fIinterval\fR
+Set the update interval (in seconds). Default is 1 second.
+
+.SH EXAMPLES
+To monitor traffic on the interface \fBeth0\fR and sort by bytes per second:
+.PP
+.nf
+.RS
+isa-top \-i eth0 \-s b
+.RE
+.fi
+.PP
+To monitor traffic on the interface \fBwlan0\fR with an update interval of 2 seconds:
+.PP
+.nf
+.RS
+isa-top \-i wlan0 \-t 2
+.RE
+.fi
+
+.SH OUTPUT
+The output displays the following columns:
+.TP
+.B Src IP:port
+The source IP address and port of the connection.
+.TP
+.B Dst IP:port
+The destination IP address and port of the connection.
+.TP
+.B Proto
+The protocol used (e.g., TCP, UDP, ICMP).
+.TP
+.B Rx b/s, p/s
+Received bytes per second and packets per second.
+.TP
+.B Tx b/s, p/s
+Transmitted bytes per second and packets per second.
+
+.SH ENVIRONMENT
+The behavior of 
+.B isa-top
+may be influenced by the following environment variables:
+.TP
+.B PCAP_ERRBUF_SIZE
+Sets the size of the buffer for error messages from 
+.I libpcap.
+
+.SH FILES
+.TP
+.I /usr/local/bin/isa-top
+The location where the executable may be installed.
+.TP
+.I /etc/isa-top.conf
+Optional configuration file for default settings.
+
+.SH SEE ALSO
+.BR pcap (3), 
+.BR ncurses (3), 
+.BR ifconfig (8)
+
+.SH AUTHOR
+Artur Sultanov
+
+.SH LICENSE
+This software is licensed under the MIT License. See the LICENSE file for more details.
+
+.SH COPYRIGHT
+Copyright 2024 Artur Sultanov. All rights reserved.
