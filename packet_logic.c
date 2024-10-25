@@ -113,7 +113,6 @@ void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const
 
     size_t payload_len = header->len - sizeof(struct ether_header);
 
-    // Update statistics based on direction
     if (direction == 1) {
         // Tx direction (outgoing)
         conn->tx_bytes += payload_len;

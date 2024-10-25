@@ -16,21 +16,18 @@ void display_stats(void) {
     }
 
     if (count == 0) {
-        // No connections to display
         clear();
         mvprintw(0, 0, "No connections to display.");
         refresh();
         return;
     }
 
-    // Allocate array for sorting
     connection_stats_t **array = malloc(count * sizeof(connection_stats_t*));
     if (!array) {
         perror("malloc");
         return;
     }
 
-    // Populate array
     current = connections;
     int i = 0;
     while (current != NULL) {
@@ -41,7 +38,6 @@ void display_stats(void) {
     // Sort the array
     qsort(array, count, sizeof(connection_stats_t*), connection_sort);
 
-    // Clear the screen
     clear();
 
     // Print headers
@@ -90,9 +86,6 @@ void display_stats(void) {
                  tx_p.value, tx_p.suffix);
     }
 
-    // Refresh the screen to show changes
     refresh();
-
-    // Free the array
     free(array);
 }

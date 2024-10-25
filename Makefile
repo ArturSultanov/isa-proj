@@ -2,7 +2,7 @@
 CC = gcc
 
 # Compiler flags
-CFLAGS = -Wall -Wextra -Wpedantic -g -Wmissing-prototypes -Wstrict-prototypes
+CFLAGS = -Wall -Wextra
 
 # Libraries
 LDFLAGS = -lpcap -lncurses

@@ -40,7 +40,6 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    // Set pcap to non-blocking mode
     if (pcap_setnonblock(handle, 1, NULL) == -1) {
         fprintf(stderr, "Failed to set pcap to non-blocking mode: %s\n", pcap_geterr(handle));
         pcap_close(handle);
@@ -48,10 +47,8 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    // Start time tracking
     time_t last_update = time(NULL);
 
-    // Main loop
     while (!stop) {
         // Capture packets
         int ret = pcap_dispatch(handle, -1, packet_handler, NULL);
@@ -68,8 +65,8 @@ int main(int argc, char **argv) {
             last_update = current_time;
         }
 
-        // Sleep briefly to reduce CPU usage
-        usleep(100000); // 100,000 microseconds = 0.1 seconds
+        // Reduce CPU usage
+        usleep(100000);
     }
 
     // Cleanup

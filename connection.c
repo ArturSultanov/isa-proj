@@ -12,7 +12,6 @@ int compare_keys(connection_key_t *a, connection_key_t *b) {
         return 0;  // Different
     }
 
-    // Check if the connection is in the Tx direction
     if (strcmp(a->src_ip, b->src_ip) == 0 && 
         strcmp(a->dst_ip, b->dst_ip) == 0 &&
         strcmp(a->src_port, b->src_port) == 0 &&
@@ -20,7 +19,6 @@ int compare_keys(connection_key_t *a, connection_key_t *b) {
         return 1;  // Tx direction (matching source and destination)
     }
 
-    // Check if the connection is in the Rx direction (reverse match)
     if (strcmp(a->src_ip, b->dst_ip) == 0 && 
         strcmp(a->dst_ip, b->src_ip) == 0 &&
         strcmp(a->src_port, b->dst_port) == 0 &&
@@ -37,9 +35,9 @@ connection_stats_t* get_connection(connection_key_t *key, int *direction) {
     // Loop through existing connections to check for a match
     while (current != NULL) {
         int dir = compare_keys(&current->key, key);
-        if (dir != 0) {  // If a match is found (Tx or Rx)
+        if (dir != 0) {
             *direction = dir;  // Set the direction (1 for Tx, -1 for Rx)
-            return current;    // Return the found connection
+            return current;
         }
         current = current->next;
     }
@@ -47,25 +45,21 @@ connection_stats_t* get_connection(connection_key_t *key, int *direction) {
     // No match found, create a new connection
     *direction = 1; // Default to Tx if it's a new connection
 
-    // Allocate memory for the new connection
     connection_stats_t *new_conn = malloc(sizeof(connection_stats_t));
     if (!new_conn) {
         perror("malloc");
         return NULL;
     }
 
-    // Initialize the new connection
     memcpy(&new_conn->key, key, sizeof(connection_key_t));
     new_conn->rx_bytes = new_conn->tx_bytes = 0;
     new_conn->rx_packets = new_conn->tx_packets = 0;
-    new_conn->next = connections;  // Insert the new connection at the head of the list
-    connections = new_conn;  // Update the head of the list
-
-    return new_conn;  // Return the newly created connection
+    new_conn->next = connections;
+    connections = new_conn;
+    return new_conn;
 }
 
 int connection_sort(const void *a, const void *b) {
-    // The argument 'arg' is cast to the appropriate type, in this case sort_type_t
     sort_type_t sort_type = config.sort_type;
 
     // Cast 'a' and 'b' to pointers to pointers to connection_stats_t
@@ -73,19 +67,16 @@ int connection_sort(const void *a, const void *b) {
     connection_stats_t *conn_a = *(connection_stats_t**)a;
     connection_stats_t *conn_b = *(connection_stats_t**)b;
 
-    // Compare based on the selected sorting type (bytes or packets)
     if (sort_type == SORT_BYTES) {
-        // Compare total bytes (received + transmitted)
         uint64_t total_a = conn_a->rx_bytes + conn_a->tx_bytes;
         uint64_t total_b = conn_b->rx_bytes + conn_b->tx_bytes;
         if (total_b > total_a)
-            return 1;    // Return 1 if conn_b should come before conn_a
+            return 1;
         else if (total_b < total_a)
-            return -1;   // Return -1 if conn_a should come before conn_b
+            return -1;
         else
-            return 0;    // Return 0 if they are equal
+            return 0;
     } else { // SORT_PACKETS
-        // Compare total packets (received + transmitted)
         uint64_t total_a = conn_a->rx_packets + conn_a->tx_packets;
         uint64_t total_b = conn_b->rx_packets + conn_b->tx_packets;
         if (total_b > total_a)
